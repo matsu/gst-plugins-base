@@ -265,6 +265,8 @@ audioringbuffer_thread_func (GstRingBuffer * buf)
       gst_ring_buffer_advance (buf, 1);
     } else {
       GST_OBJECT_LOCK (abuf);
+      sink->buffer_running = FALSE;
+      g_cond_signal (sink->pause_cond);
       if (!abuf->running)
         goto stop_running;
       if (G_UNLIKELY (g_atomic_int_get (&buf->state) ==
@@ -280,6 +282,7 @@ audioringbuffer_thread_func (GstRingBuffer * buf)
       if (!abuf->running)
         goto stop_running;
       GST_DEBUG_OBJECT (sink, "continue running");
+      sink->buffer_running = TRUE;
       GST_OBJECT_UNLOCK (abuf);
     }
   }
@@ -429,6 +432,8 @@ gst_audioringbuffer_activate (GstRingBuffer * buf, gboolean active)
 
     GST_DEBUG_OBJECT (sink, "starting thread");
 
+    sink->pause_cond = g_cond_new ();
+    sink->buffer_running = TRUE;
 #if !GLIB_CHECK_VERSION (2, 31, 0)
     sink->thread =
         g_thread_create ((GThreadFunc) audioringbuffer_thread_func, buf, TRUE,
@@ -454,6 +459,7 @@ gst_audioringbuffer_activate (GstRingBuffer * buf, gboolean active)
 
     /* join the thread */
     g_thread_join (sink->thread);
+    g_cond_free (sink->pause_cond);
 
     GST_OBJECT_LOCK (buf);
   }
@@ -530,6 +536,9 @@ gst_audioringbuffer_pause (GstRingBuffer * buf)
     csink->reset (sink);
     GST_DEBUG_OBJECT (sink, "reset done");
   }
+
+  if (sink->buffer_running)
+    g_cond_wait (sink->pause_cond, GST_OBJECT_GET_LOCK (buf));
 
   return TRUE;
 }

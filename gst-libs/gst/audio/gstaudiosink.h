@@ -49,6 +49,9 @@ struct _GstAudioSink {
   /*< private >*/ /* with LOCK */
   GThread   *thread;
 
+  GCond *pause_cond;
+  gboolean buffer_running;
+
   /*< private >*/
   gpointer _gst_reserved[GST_PADDING];
 };
